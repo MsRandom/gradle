@@ -34,7 +34,7 @@ public interface TransformUpstreamDependenciesResolver {
      * Returns the dependencies that should be applied to the given transform step for an artifact
      * sourced from a component with the given identifier.
      */
-    TransformUpstreamDependencies dependenciesFor(ComponentIdentifier componentId, TransformStep transformStep);
+    TransformUpstreamDependencies dependenciesFor(ComponentVariantIdentifier targetComponentVariant, TransformStep transformStep);
 
     interface Factory {
 

@@ -138,21 +138,20 @@ public class DefaultTransformedVariantFactory implements TransformedVariantFacto
         VariantDefinition variantDefinition,
         TransformUpstreamDependenciesResolver dependenciesResolver
     ) {
-        ComponentIdentifier componentId = targetComponentVariant.getComponentId();
         TransformStep transformStep = variantDefinition.getTransformStep();
 
         ImmutableList.Builder<TransformStepNode> builder = ImmutableList.builder();
         sourceArtifacts.visitTransformSources(new ResolvedArtifactSet.TransformSourceVisitor() {
             @Override
             public void visitArtifact(ResolvableArtifact artifact) {
-                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(componentId, transformStep);
+                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(targetComponentVariant, transformStep);
                 TransformStepNode transformStepNode = transformStepNodeFactory.createInitial(targetComponentVariant, sourceAttributes, transformStep, artifact, upstreamDependencies, buildOperationRunner, calculatedValueContainerFactory);
                 builder.add(transformStepNode);
             }
 
             @Override
             public void visitTransform(TransformStepNode source) {
-                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(componentId, transformStep);
+                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(targetComponentVariant, transformStep);
                 TransformStepNode transformStepNode = transformStepNodeFactory.createChained(targetComponentVariant, sourceAttributes, transformStep, source, upstreamDependencies, buildOperationRunner, calculatedValueContainerFactory);
                 builder.add(transformStepNode);
             }
