@@ -215,6 +215,7 @@ public class DefaultResolutionOutputs implements ResolutionOutputsInternal {
             return results.getVisitedArtifacts().select(new ArtifactSelectionSpec(
                 getAttributes(),
                 componentFilter,
+                Specs.satisfyAll(),
                 reselectVariants,
                 allowNoMatchingVariants,
                 resolutionAccess.getDefaultSortOrder()

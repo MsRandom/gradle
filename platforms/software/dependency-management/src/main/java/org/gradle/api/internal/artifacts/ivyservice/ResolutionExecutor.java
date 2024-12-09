@@ -447,7 +447,7 @@ public class ResolutionExecutor {
     }
 
     private static ArtifactSelectionSpec getImplicitSelectionSpec(ImmutableAttributes requestAttributes, ResolutionStrategy.SortOrder sortOrder) {
-        return new ArtifactSelectionSpec(requestAttributes, Specs.satisfyAll(), false, false, sortOrder);
+        return new ArtifactSelectionSpec(requestAttributes, Specs.satisfyAll(), Specs.satisfyAll(), false, false, sortOrder);
     }
 
     private ResolvedArtifactsGraphVisitor artifactVisitorFor(DependencyArtifactsVisitor artifactsVisitor, ImmutableArtifactTypeRegistry immutableArtifactTypeRegistry) {

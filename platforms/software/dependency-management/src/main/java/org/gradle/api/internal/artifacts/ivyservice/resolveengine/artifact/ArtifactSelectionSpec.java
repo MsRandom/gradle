@@ -20,6 +20,7 @@ import org.gradle.api.artifacts.ResolutionStrategy;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.api.specs.Spec;
+import org.gradle.internal.component.external.model.ImmutableCapabilities;
 
 /**
  * A set of parameters governing the selection of artifacts from a dependency graph.
@@ -28,6 +29,7 @@ public class ArtifactSelectionSpec {
 
     private final ImmutableAttributes requestAttributes;
     private final Spec<? super ComponentIdentifier> componentFilter;
+    private final Spec<? super ImmutableCapabilities> capabilityFilter;
     private final boolean selectFromAllVariants;
     private final boolean allowNoMatchingVariants;
     private final ResolutionStrategy.SortOrder sortOrder;
@@ -35,12 +37,14 @@ public class ArtifactSelectionSpec {
     public ArtifactSelectionSpec(
         ImmutableAttributes requestAttributes,
         Spec<? super ComponentIdentifier> componentFilter,
+        Spec<? super ImmutableCapabilities> capabilityFilter,
         boolean selectFromAllVariants,
         boolean allowNoMatchingVariants,
         ResolutionStrategy.SortOrder sortOrder
     ) {
         this.requestAttributes = requestAttributes;
         this.componentFilter = componentFilter;
+        this.capabilityFilter = capabilityFilter;
         this.selectFromAllVariants = selectFromAllVariants;
         this.allowNoMatchingVariants = allowNoMatchingVariants;
         this.sortOrder = sortOrder;
@@ -58,6 +62,13 @@ public class ArtifactSelectionSpec {
      */
     public Spec<? super ComponentIdentifier> getComponentFilter() {
         return componentFilter;
+    }
+
+    /**
+     * Filters the selected artifacts to only contain those which originated from a variant matching this filter.
+     */
+    public Spec<? super ImmutableCapabilities> getCapabilityFilter() {
+        return capabilityFilter;
     }
 
     /**

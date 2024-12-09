@@ -18,6 +18,7 @@ package org.gradle.api.internal.artifacts.transform;
 
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.VisitedArtifactSet;
+import org.gradle.internal.component.external.model.ImmutableCapabilities;
 
 /**
  * Companion type to {@link TransformStepNode} that knows how to compute extra dependent nodes
@@ -28,13 +29,13 @@ public interface TransformUpstreamDependenciesResolver {
     /**
      * A resolver that always returns empty transform dependencies.
      */
-    TransformUpstreamDependenciesResolver NO_DEPENDENCIES = (componentId, transformStep) -> DefaultTransformUpstreamDependenciesResolver.NO_DEPENDENCIES;
+    TransformUpstreamDependenciesResolver NO_DEPENDENCIES = (componentId, capabilities, transformStep) -> DefaultTransformUpstreamDependenciesResolver.NO_DEPENDENCIES;
 
     /**
      * Returns the dependencies that should be applied to the given transform step for an artifact
      * sourced from a component with the given identifier.
      */
-    TransformUpstreamDependencies dependenciesFor(ComponentVariantIdentifier targetComponentVariant, TransformStep transformStep);
+    TransformUpstreamDependencies dependenciesFor(ComponentIdentifier componentIdentifier, ImmutableCapabilities capabilities, TransformStep transformStep);
 
     interface Factory {
 

@@ -24,6 +24,7 @@ import org.gradle.api.artifacts.result.DependencyResult;
 import org.gradle.api.artifacts.result.ResolvedComponentResult;
 import org.gradle.api.artifacts.result.ResolvedDependencyResult;
 import org.gradle.api.artifacts.result.ResolvedVariantResult;
+import org.gradle.api.capabilities.Capability;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.DomainObjectContext;
 import org.gradle.api.internal.artifacts.ResolverResults;
@@ -45,11 +46,13 @@ import org.gradle.api.internal.tasks.TaskDependencyFactory;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.api.internal.tasks.WorkNodeAction;
 import org.gradle.api.specs.Spec;
+import org.gradle.api.specs.Specs;
 import org.gradle.execution.plan.PostExecutionNodeAwareActionNode;
 import org.gradle.execution.plan.TaskNode;
 import org.gradle.execution.plan.TaskNodeFactory;
 import org.gradle.internal.Describables;
 import org.gradle.internal.Try;
+import org.gradle.internal.component.external.model.ImmutableCapabilities;
 import org.gradle.internal.model.CalculatedValue;
 import org.gradle.internal.model.CalculatedValueContainer;
 import org.gradle.internal.model.CalculatedValueContainerFactory;
@@ -201,19 +204,20 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
     }
 
     @Override
-    public TransformUpstreamDependencies dependenciesFor(ComponentVariantIdentifier targetComponentVariant, TransformStep transformStep) {
+    public TransformUpstreamDependencies dependenciesFor(ComponentIdentifier componentIdentifier, ImmutableCapabilities capabilities, TransformStep transformStep) {
         if (!transformStep.requiresDependencies()) {
             return NO_DEPENDENCIES;
         }
-        return new TransformUpstreamDependenciesImpl(targetComponentVariant, configurationIdentity, transformStep, calculatedValueContainerFactory, initialVisitedGraph, initialVisitedArtifacts);
+        return new TransformUpstreamDependenciesImpl(componentIdentifier, capabilities, configurationIdentity, transformStep, calculatedValueContainerFactory, initialVisitedGraph, initialVisitedArtifacts);
     }
 
-    private FileCollectionInternal getCompleteTransformDependencies(ComponentVariantIdentifier targetComponentVariant, ImmutableAttributes fromAttributes) {
+    private FileCollectionInternal getCompleteTransformDependencies(ComponentIdentifier componentIdentifier, ImmutableCapabilities capabilities, ImmutableAttributes fromAttributes) {
         completeGraphResults.finalizeIfNotAlready();
         completeArtifactResults.finalizeIfNotAlready();
 
         SelectedArtifactSet selectedArtifacts = selectDependencyArtifacts(
-            targetComponentVariant,
+            componentIdentifier,
+            capabilities,
             fromAttributes,
             completeGraphResults.get(),
             completeArtifactResults.get()
@@ -228,30 +232,44 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
     }
 
     private SelectedArtifactSet selectDependencyArtifacts(
-        ComponentVariantIdentifier targetComponentVariant,
+        ComponentIdentifier componentIdentifier,
+        ImmutableCapabilities capabilities,
         ImmutableAttributes fromAttributes,
         VisitedGraphResults visitedGraph,
         VisitedArtifactSet visitedArtifacts
     ) {
-        Set<ComponentIdentifier> dependencyComponents = computeDependencies(targetComponentVariant, visitedGraph);
-        Spec<ComponentIdentifier> filter = SerializableLambdas.spec(dependencyComponents::contains);
+        Set<Capability> dependencyCapabilities = computeDependencies(componentIdentifier, capabilities, visitedGraph);
+
+        Spec<ImmutableCapabilities> filter = SerializableLambdas.spec(specCapabilities -> {
+            if (specCapabilities.isEmpty()) {
+                return false;
+            }
+
+            for (Capability capability : specCapabilities) {
+                if (!dependencyCapabilities.contains(capability)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
 
         ImmutableAttributes fullAttributes = attributesFactory.concat(requestAttributes, fromAttributes);
         return visitedArtifacts.select(new ArtifactSelectionSpec(
-            fullAttributes, filter, false, false, artifactDependencySortOrder
+            fullAttributes, Specs.satisfyAll(), filter, false, false, artifactDependencySortOrder
         ));
     }
 
-    private static Set<ComponentIdentifier> computeDependencies(ComponentVariantIdentifier targetComponentVariant, VisitedGraphResults visitedGraph) {
+    private static Set<Capability> computeDependencies(ComponentIdentifier componentIdentifier, ImmutableCapabilities capabilities, VisitedGraphResults visitedGraph) {
         ResolvedComponentResult root = visitedGraph.getResolutionResult().getRootSource().get();
-        ResolvedComponentResult targetComponent = findVariant(root, targetComponentVariant);
+        List<DependencyResult> targetVariantDependencies = findVariantDependencies(root, componentIdentifier, capabilities);
 
-        if (targetComponent == null) {
-            throw new AssertionError("Could not find component " + targetComponentVariant + " in provided results.");
+        if (targetVariantDependencies == null) {
+            throw new AssertionError("Could not find component " + componentIdentifier + " with capabilities " + capabilities + " in provided results.");
         }
 
-        Set<ComponentIdentifier> buildDependencies = new HashSet<>();
-        collectReachableComponents(buildDependencies, new HashSet<>(), targetComponent.getDependencies());
+        Set<Capability> buildDependencies = new HashSet<>();
+        collectReachableComponents(buildDependencies, new HashSet<>(), targetVariantDependencies);
         return buildDependencies;
     }
 
@@ -261,7 +279,7 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
      * @return null if the component is not found.
      */
     @Nullable
-    public static ResolvedComponentResult findVariant(ResolvedComponentResult rootComponent, ComponentVariantIdentifier targetComponentVariant) {
+    public static List<DependencyResult> findVariantDependencies(ResolvedComponentResult rootComponent, ComponentIdentifier componentIdentifier, ImmutableCapabilities capabilities) {
         Set<ResolvedComponentResult> seen = new HashSet<>();
         Deque<ResolvedComponentResult> pending = new ArrayDeque<>();
         pending.push(rootComponent);
@@ -269,19 +287,19 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
         while (!pending.isEmpty()) {
             ResolvedComponentResult component = pending.pop();
 
-            if (component.getId().equals(targetComponentVariant.getComponentId())) {
+            if (component.getId().equals(componentIdentifier)) {
                 for (ResolvedVariantResult variant : component.getVariants()) {
-                    boolean allCapabilitiesMatches = true;
+                    boolean allCapabilitiesMatch = true;
 
-                    for (ImmutableCapability capability : targetComponentVariant.getCapabilities()) {
+                    for (ImmutableCapability capability : capabilities) {
                         if (!variant.getCapabilities().contains(capability)) {
-                            allCapabilitiesMatches = false;
+                            allCapabilitiesMatch = false;
                             break;
                         }
                     }
 
-                    if (allCapabilitiesMatches) {
-                        return component;
+                    if (allCapabilitiesMatch) {
+                        return component.getDependenciesForVariant(variant);
                     }
                 }
             }
@@ -300,15 +318,15 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
         return null;
     }
 
-    private static void collectReachableComponents(Set<ComponentIdentifier> dependenciesIdentifiers, Set<ComponentIdentifier> visited, Set<? extends DependencyResult> dependencies) {
+    private static void collectReachableComponents(Set<Capability> dependencyCapabilities, Set<ComponentIdentifier> visited, Collection<? extends DependencyResult> dependencies) {
         for (DependencyResult dependency : dependencies) {
             if (dependency instanceof ResolvedDependencyResult && !dependency.isConstraint()) {
                 ResolvedDependencyResult resolvedDependency = (ResolvedDependencyResult) dependency;
                 ResolvedComponentResult selected = resolvedDependency.getSelected();
-                dependenciesIdentifiers.add(selected.getId());
+                dependencyCapabilities.addAll(resolvedDependency.getResolvedVariant().getCapabilities());
                 if (visited.add(selected.getId())) {
                     // Do not traverse if seen already
-                    collectReachableComponents(dependenciesIdentifiers, visited, selected.getDependencies());
+                    collectReachableComponents(dependencyCapabilities, visited, selected.getDependencies());
                 }
             }
         }
@@ -336,19 +354,22 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
      * as the dependencies have already been resolved in that case.
      */
     public class FinalizeTransformDependenciesFromSelectedArtifacts extends FinalizeTransformDependencies {
-        private final ComponentVariantIdentifier targetComponentVariant;
+        private final ComponentIdentifier componentIdentifier;
+        private final ImmutableCapabilities capabilities;
         private final ImmutableAttributes fromAttributes;
 
         private final VisitedGraphResults initialVisitedGraph;
         private final VisitedArtifactSet initialVisitedArtifacts;
 
         public FinalizeTransformDependenciesFromSelectedArtifacts(
-            ComponentVariantIdentifier targetComponentVariant,
+            ComponentIdentifier componentIdentifier,
+            ImmutableCapabilities capabilities,
             ImmutableAttributes fromAttributes,
             VisitedGraphResults initialVisitedGraph,
             VisitedArtifactSet initialVisitedArtifacts
         ) {
-            this.targetComponentVariant = targetComponentVariant;
+            this.componentIdentifier = componentIdentifier;
+            this.capabilities = capabilities;
             this.fromAttributes = fromAttributes;
             this.initialVisitedGraph = initialVisitedGraph;
             this.initialVisitedArtifacts = initialVisitedArtifacts;
@@ -356,7 +377,7 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
 
         @Override
         public FileCollectionInternal selectedArtifacts() {
-            return getCompleteTransformDependencies(targetComponentVariant, fromAttributes);
+            return getCompleteTransformDependencies(componentIdentifier, capabilities, fromAttributes);
         }
 
         @Override
@@ -387,7 +408,8 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
             // If the initial visited graph/artifacts are derived from a partial graph resolution,
             // these dependencies will only represent an approximate set of build dependencies.
             context.add(selectDependencyArtifacts(
-                targetComponentVariant,
+                componentIdentifier,
+                capabilities,
                 fromAttributes,
                 initialVisitedGraph,
                 initialVisitedArtifacts
@@ -449,24 +471,27 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
     }
 
     private class TransformUpstreamDependenciesImpl implements TransformUpstreamDependencies {
-        private final ComponentVariantIdentifier targetComponentVariant;
+        private final ComponentIdentifier componentIdentifier;
+        private final ImmutableCapabilities capabilities;
         private final ConfigurationIdentity configurationIdentity;
         private final CalculatedValueContainer<TransformDependencies, FinalizeTransformDependencies> transformDependencies;
         private final ImmutableAttributes fromAttributes;
 
         public TransformUpstreamDependenciesImpl(
-            ComponentVariantIdentifier targetComponentVariant,
+            ComponentIdentifier componentIdentifier,
+            ImmutableCapabilities capabilities,
             @Nullable ConfigurationIdentity configurationIdentity,
             TransformStep transformStep,
             CalculatedValueContainerFactory calculatedValueContainerFactory,
             VisitedGraphResults initialVisitedGraph,
             VisitedArtifactSet initialVisitedArtifacts
         ) {
-            this.targetComponentVariant = targetComponentVariant;
+            this.componentIdentifier = componentIdentifier;
+            this.capabilities = capabilities;
             this.configurationIdentity = configurationIdentity;
             this.fromAttributes = transformStep.getFromAttributes();
-            this.transformDependencies = calculatedValueContainerFactory.create(Describables.of("dependencies for", targetComponentVariant, fromAttributes),
-                new FinalizeTransformDependenciesFromSelectedArtifacts(targetComponentVariant, transformStep.getFromAttributes(), initialVisitedGraph, initialVisitedArtifacts));
+            this.transformDependencies = calculatedValueContainerFactory.create(Describables.of("dependencies for", componentIdentifier, fromAttributes),
+                new FinalizeTransformDependenciesFromSelectedArtifacts(componentIdentifier, capabilities, transformStep.getFromAttributes(), initialVisitedGraph, initialVisitedArtifacts));
         }
 
         @Nullable
@@ -477,7 +502,7 @@ public class DefaultTransformUpstreamDependenciesResolver implements TransformUp
 
         @Override
         public FileCollection selectedArtifacts() {
-            return getCompleteTransformDependencies(targetComponentVariant, fromAttributes);
+            return getCompleteTransformDependencies(componentIdentifier, capabilities, fromAttributes);
         }
 
         @Override

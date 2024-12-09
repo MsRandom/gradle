@@ -72,38 +72,42 @@ public class VariantResolvingArtifactSet implements ArtifactSet {
         ArtifactSelectionSpec spec
     ) {
         ComponentIdentifier componentId = component.getId();
+
         if (!spec.getComponentFilter().isSatisfiedBy(componentId)) {
             return ResolvedArtifactSet.EMPTY;
-        } else {
-
-            if (spec.getSelectFromAllVariants() && !requestedArtifacts.isEmpty()) {
-                // Variants with overridden artifacts cannot be reselected since
-                // we do not know the "true" attributes of the requested artifact.
-                return ResolvedArtifactSet.EMPTY;
-            }
-
-            ImmutableList<ResolvedVariant> variants;
-            try {
-                if (!spec.getSelectFromAllVariants()) {
-                    variants = getOwnArtifacts(consumerServices);
-                } else {
-                    variants = getArtifactVariantsForReselection(spec.getRequestAttributes(), consumerServices);
-                }
-            } catch (Exception e) {
-                return new BrokenResolvedArtifactSet(e);
-            }
-
-            if (variants.isEmpty() && spec.getAllowNoMatchingVariants()) {
-                return ResolvedArtifactSet.EMPTY;
-            }
-
-            ArtifactVariantSelector artifactVariantSelector = consumerServices.getArtifactVariantSelector();
-            ResolvedVariantTransformer resolvedVariantTransformer = consumerServices.getResolvedVariantTransformer();
-
-            ImmutableAttributesSchema producerSchema = component.getMetadata().getAttributesSchema();
-            ResolvedVariantSet variantSet = new DefaultResolvedVariantSet(componentId, producerSchema, overriddenAttributes, variants, resolvedVariantTransformer);
-            return artifactVariantSelector.select(variantSet, spec.getRequestAttributes(), spec.getAllowNoMatchingVariants());
         }
+
+        if (!spec.getCapabilityFilter().isSatisfiedBy(variant.getCapabilities())) {
+            return ResolvedArtifactSet.EMPTY;
+        }
+
+        if (spec.getSelectFromAllVariants() && !requestedArtifacts.isEmpty()) {
+            // Variants with overridden artifacts cannot be reselected since
+            // we do not know the "true" attributes of the requested artifact.
+            return ResolvedArtifactSet.EMPTY;
+        }
+
+        ImmutableList<ResolvedVariant> variants;
+        try {
+            if (!spec.getSelectFromAllVariants()) {
+                variants = getOwnArtifacts(consumerServices);
+            } else {
+                variants = getArtifactVariantsForReselection(spec.getRequestAttributes(), consumerServices);
+            }
+        } catch (Exception e) {
+            return new BrokenResolvedArtifactSet(e);
+        }
+
+        if (variants.isEmpty() && spec.getAllowNoMatchingVariants()) {
+            return ResolvedArtifactSet.EMPTY;
+        }
+
+        ArtifactVariantSelector artifactVariantSelector = consumerServices.getArtifactVariantSelector();
+        ResolvedVariantTransformer resolvedVariantTransformer = consumerServices.getResolvedVariantTransformer();
+
+        ImmutableAttributesSchema producerSchema = component.getMetadata().getAttributesSchema();
+        ResolvedVariantSet variantSet = new DefaultResolvedVariantSet(componentId, producerSchema, overriddenAttributes, variants, resolvedVariantTransformer);
+        return artifactVariantSelector.select(variantSet, spec.getRequestAttributes(), spec.getAllowNoMatchingVariants());
     }
 
     /**

@@ -23,6 +23,7 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.Resol
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedArtifactSet;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedVariant;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.internal.component.external.model.ImmutableCapabilities;
 import org.gradle.internal.component.model.VariantResolveMetadata;
 import org.gradle.internal.model.CalculatedValueContainerFactory;
 import org.gradle.internal.operations.BuildOperationRunner;
@@ -138,20 +139,22 @@ public class DefaultTransformedVariantFactory implements TransformedVariantFacto
         VariantDefinition variantDefinition,
         TransformUpstreamDependenciesResolver dependenciesResolver
     ) {
+        ComponentIdentifier componentId = targetComponentVariant.getComponentId();
+        ImmutableCapabilities capabilities = targetComponentVariant.getCapabilities();
         TransformStep transformStep = variantDefinition.getTransformStep();
 
         ImmutableList.Builder<TransformStepNode> builder = ImmutableList.builder();
         sourceArtifacts.visitTransformSources(new ResolvedArtifactSet.TransformSourceVisitor() {
             @Override
             public void visitArtifact(ResolvableArtifact artifact) {
-                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(targetComponentVariant, transformStep);
+                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(componentId, capabilities, transformStep);
                 TransformStepNode transformStepNode = transformStepNodeFactory.createInitial(targetComponentVariant, sourceAttributes, transformStep, artifact, upstreamDependencies, buildOperationRunner, calculatedValueContainerFactory);
                 builder.add(transformStepNode);
             }
 
             @Override
             public void visitTransform(TransformStepNode source) {
-                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(targetComponentVariant, transformStep);
+                TransformUpstreamDependencies upstreamDependencies = dependenciesResolver.dependenciesFor(componentId, capabilities, transformStep);
                 TransformStepNode transformStepNode = transformStepNodeFactory.createChained(targetComponentVariant, sourceAttributes, transformStep, source, upstreamDependencies, buildOperationRunner, calculatedValueContainerFactory);
                 builder.add(transformStepNode);
             }

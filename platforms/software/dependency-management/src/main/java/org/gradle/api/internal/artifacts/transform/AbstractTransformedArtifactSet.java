@@ -49,7 +49,7 @@ public abstract class AbstractTransformedArtifactSet implements TransformedArtif
         CalculatedValueContainerFactory calculatedValueContainerFactory
     ) {
         ImmutableList.Builder<BoundTransformStep> builder = ImmutableList.builder();
-        transformChain.visitTransformSteps(step -> builder.add(new BoundTransformStep(step, dependenciesResolver.dependenciesFor(componentIdentifier, step))));
+        transformChain.visitTransformSteps(step -> builder.add(new BoundTransformStep(step, dependenciesResolver.dependenciesFor(componentIdentifier, capabilities, step))));
         ImmutableList<BoundTransformStep> steps = builder.build();
         this.result = calculatedValueContainerFactory.create(Describables.of(componentIdentifier), new CalculateArtifacts(componentIdentifier, delegate, targetVariantAttributes, capabilities, steps));
     }
